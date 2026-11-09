@@ -8,26 +8,24 @@ npm run dev      # http://localhost:5173
 npm run build    # production build in dist/
 ```
 
-| URL | What |
+Everything uses hash links, so it works on any static host (Vercel, Netlify, GitHub Pages).
+
+| Link | What |
 | --- | --- |
-| `/kiosk` | Customer kiosk (welcome → dine in / take out → menu → cart → checkout → order number) |
-| `/order/:id` | Live order-tracking page (QR on the confirmation screen and receipt) |
-| `/loyalty` | Customer stamp-card lookup |
-| `/admin` | Admin dashboard — demo PIN **1234** |
+| `#/` | Customer storefront (hero, menu, bag, checkout, track your order) |
+| `#/kiosk` | In-store touch kiosk mode |
+| `#/order/<code>` | Live order tracking by 4-digit code |
+| `#/loyalty` | Loyalty card / points lookup |
+| `#/admin` | Admin console — demo logins `admin` / `admin123` (owner), `staff1` / `staff123` (staff) |
 
 ## Features
 
-**Kiosk:** welcome/attract screen with idle reset, order types, categories, search, featured items, item options (required/optional add-ons, notes, quantity), upsell suggestions, cart, vouchers, Senior/PWD discount with ID capture, payment methods, loyalty stamps by mobile number, order number + tracking QR, senior-friendly mode.
+Built from the GrainSmart screenshots in `grainsmart website images/`.
 
-**Admin:**
-- Dashboard (sales, orders, new vs returning customers, best sellers, busiest hours, to-dos; Today/7/30/90 days)
-- Orders (live board + list, sound alert, accept → ready → complete, paid/unpaid, cancel with stock restore, printable receipt, CSV export)
-- Menu: items, categories (reorder), add-ons, Boost Sales (upsells)
-- Reports: Sales, Cash & remits (drawer over/short), Expenses, Profit
-- Stock: per-branch inventory, adjustments, transfers, stock history with duplicate-deduction guard
-- Grow: Customers, Loyalty, Texts, Vouchers, Senior & PWD log
-- Store setup: Order types, Branches, Staff PINs, Payment methods, **Branding Studio** (logo, colors, theme presets, fonts, layout, hero, welcome page, live preview on desktop/tablet/mobile, undo/redo, publish), Receipt Studio, QR codes, Connect AI (data snapshot + backup/restore), Settings, Learn
+**Storefront:** hero with editable buttons and badge, scrolling intro strip, "The good stuff" menu (8 layouts, 10 card styles), story section, bag drawer, checkout with order methods (Dine In / Pick Up), variations, sugar levels and add-ons, payment QR + optional proof-of-payment upload, vouchers, Senior/PWD, loyalty card code, 4-digit order code and tracking.
+
+**Admin console:** Dashboard · Orders (Start preparing · notify customer, Cash received, Digital payment received, Cancel) · Kitchen tickets · Products · Categories · Add-ons & variations · Bulk import · Boost sales · Sales reports (date range, CSV for Google Sheets, PDF, staff clock times CSV, reset) · Cash & remits register sessions · Expenses (cash/digital) · Profit estimate · Payment methods with QR upload · Loyalty points & printed card codes · Customers · Vouchers · Texts · Senior & PWD · Stock on hand · Transfers · Stock history · Shop design with live preview · Staff accounts with permissions · Attendance · Schedule · Order methods · Branches · Receipt studio · QR codes · Backup · Appearance (light/dark).
 
 ## Data
 
-Data is stored in the browser (`localStorage`) and syncs live between the kiosk and admin tabs on the same device. Use **Connect AI → Backup** to move data between devices. A shared cloud database (so several tablets and phones see the same orders) is the next step.
+Data is stored in the browser (`localStorage`) and syncs live between tabs on the same device. A shared cloud database is needed for several devices (tablet kiosk + owner's phone) to see the same orders.

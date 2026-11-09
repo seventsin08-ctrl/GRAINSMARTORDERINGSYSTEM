@@ -66,7 +66,7 @@ export function Customers() {
           <div className="divider" />
           <b>Orders</b>
           {db.orders.filter((o) => o.customerPhone === live.phone).map((o) => (
-            <div key={o.id} className="row between small"><span>#{o.number} · {fmtDateTime(o.createdAt)}</span><span className="mono">{money(o.total)}</span></div>
+            <div key={o.id} className="row between small"><span>#{o.code} · {fmtDateTime(o.createdAt)}</span><span className="mono">{money(o.total)}</span></div>
           ))}
         </Modal>
       )}

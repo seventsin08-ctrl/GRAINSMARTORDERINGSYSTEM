@@ -1,64 +1,61 @@
-import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { getDB, useDB } from '../../store/db';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { login, useDB } from '../../store/db';
 
 export default function Login() {
   const b = useDB((d) => d.branding);
-  const [pin, setPin] = useState('');
-  const [bad, setBad] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [keep, setKeep] = useState(true);
+  const [err, setErr] = useState('');
   const nav = useNavigate();
   const loc = useLocation();
   const from = (loc.state as { from?: string } | null)?.from ?? '/admin';
 
-  const tryPin = (p: string) => {
-    const db = getDB();
-    const ok = p === db.settings.adminPin || db.staff.some((s) => s.active && s.pin === p && (s.role === 'owner' || s.role === 'manager' || s.role === 'cashier' || s.role === 'kitchen'));
-    if (ok) {
-      sessionStorage.setItem('gs.admin', '1');
-      nav(from, { replace: true });
-    } else {
-      setBad(true);
-      setTimeout(() => { setBad(false); setPin(''); }, 450);
-    }
-  };
-
-  const press = (k: string) => {
-    if (bad) return;
-    const next = k === '⌫' ? pin.slice(0, -1) : (pin + k).slice(0, 8);
-    setPin(next);
-    if (next.length >= 4 && next.length === getDB().settings.adminPin.length) tryPin(next);
-  };
-
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if (/^\d$/.test(e.key)) press(e.key);
-      else if (e.key === 'Backspace') press('⌫');
-      else if (e.key === 'Enter' && pin.length >= 4) tryPin(pin);
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  });
-
-  const len = Math.max(4, getDB().settings.adminPin.length);
   return (
-    <div className="login">
-      <div style={{ textAlign: 'center' }}>
-        <div className="brand-mark" style={{ width: 64, height: 64, borderRadius: 18, margin: '0 auto 16px', fontSize: 30 }}>{b.logo ? <img src={b.logo} alt="" /> : '🌾'}</div>
-        <h1 style={{ fontSize: 28 }}>{b.storeName}</h1>
-        <p className="muted">Enter your PIN to open the dashboard</p>
-        <div className={`pin-dots ${bad ? 'shake' : ''}`}>
-          {Array.from({ length: len }, (_, i) => <i key={i} className={i < pin.length ? 'on' : ''} />)}
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '40px clamp(20px, 6vw, 120px)' }}>
+      <div className="console-head">
+        <div>
+          <div className="eyebrow">{b.storeName} · Admin console</div>
+          <h1>Welcome to the admin system</h1>
         </div>
-        <div className="keypad">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) =>
-            k ? <button key={i} onClick={() => press(k)}>{k}</button> : <span key={i} />,
-          )}
+        <Link to="/" className="round-x" aria-label="Back to shop">✕</Link>
+      </div>
+      <div className="grid g2" style={{ alignItems: 'center', gap: 48, marginTop: 40 }}>
+        <div>
+          <div style={{ width: 72, height: 72, borderRadius: 20, overflow: 'hidden', boxShadow: 'var(--shadow)', background: '#f3efe4', marginBottom: 28 }}>
+            {b.logo && <img src={b.adminLogo || b.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+          </div>
+          <div className="eyebrow">Private · Authorized access</div>
+          <h2 className="h-serif" style={{ fontSize: 'clamp(40px, 5vw, 64px)', fontWeight: 700, lineHeight: 1.02, letterSpacing: '-0.02em' }}>
+            Welcome to the {b.storeName.charAt(0) + b.storeName.slice(1).toLowerCase()} admin system.
+          </h2>
+          <p className="muted" style={{ fontSize: 17, maxWidth: 420 }}>This is a private website for the shop owner, admins, and approved staff.</p>
+          <div className="row" style={{ display: 'inline-flex', background: 'var(--surface-2)', border: '1px solid var(--line)', padding: '10px 16px', borderRadius: 14, marginTop: 12 }}>
+            <span className="badge green">✦</span>
+            <span className="small muted">Your workspace is available only to authorized team members.</span>
+          </div>
         </div>
-        {pin.length >= 4 && pin.length !== getDB().settings.adminPin.length && (
-          <button className="btn primary" style={{ marginTop: 20 }} onClick={() => tryPin(pin)}>Sign in</button>
-        )}
-        <p className="small faint" style={{ marginTop: 28 }}>Demo PIN: 1234</p>
-        <a href="/kiosk" className="small">Go to kiosk →</a>
+        <form
+          className="card"
+          style={{ padding: 36, boxShadow: 'var(--shadow)' }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const u = login(username, password, keep);
+            if (u) nav(from, { replace: true });
+            else setErr('That username and password don’t match an active account.');
+          }}
+        >
+          <p className="muted" style={{ marginTop: 0 }}>Sign in to manage today’s orders and shop settings. Staff and Admin sign-ins require approval from an Owner/Superadmin.</p>
+          <div className="stack">
+            <label className="field"><span style={{ color: 'var(--accent)' }}>Username</span><input className="input" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus /></label>
+            <label className="field"><span style={{ color: 'var(--accent)' }}>Password</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+            <label className="chk small"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Keep me signed in on this device for 30 days</label>
+            {err && <div className="small" style={{ color: 'var(--red)' }}>{err}</div>}
+            <button className="btn primary lg" style={{ borderRadius: 14 }}>Sign in</button>
+            <p className="small faint" style={{ margin: 0, textAlign: 'center' }}>Demo: admin / admin123 · staff1 / staff123</p>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { getDB, replaceDB, resetDB, uid, update, useDB } from '../../store/db';
-import type { DB, Order, StaffRole } from '../../store/types';
-import { Card, Empty, Field, PageHead, Seg, Toggle, ToggleRow, confirmAction, toast } from '../../components/ui';
+import type { DB, Order } from '../../store/types';
+import { Card, Field, ImagePicker, PageHead, Seg, Toggle, ToggleRow, confirmAction, toast } from '../../components/ui';
 import { Receipt } from '../../components/Receipt';
 
 export function OrderTypes() {
   const types = useDB((d) => d.orderTypes);
   return (
     <>
-      <PageHead title="Order Types" sub="The first choice customers make on the kiosk." actions={<button className="btn primary" onClick={() => update((d) => { d.orderTypes.push({ id: uid('ot'), name: 'Delivery', icon: '🛵', active: true, askTable: false, serviceChargePct: 0 }); })}>+ Add type</button>} />
+      <PageHead title="Order methods" sub="How customers get their order — shown at checkout on the shop and the kiosk." actions={<button className="btn primary" onClick={() => update((d) => { d.orderTypes.push({ id: uid('ot'), name: 'Delivery', icon: '🛵', active: true, askTable: false, serviceChargePct: 0 }); })}>+ Add type</button>} />
       <div className="grid g2">
         {types.map((t) => {
           const set = (p: Partial<typeof t>) => update((d) => { Object.assign(d.orderTypes.find((x) => x.id === t.id)!, p); });
@@ -64,64 +64,43 @@ export function Branches() {
   );
 }
 
-const ROLES: { value: StaffRole; label: string; desc: string }[] = [
-  { value: 'owner', label: 'Owner', desc: 'Everything' },
-  { value: 'manager', label: 'Manager', desc: 'Orders, menu, stock, reports' },
-  { value: 'cashier', label: 'Cashier', desc: 'Orders and cash drawer' },
-  { value: 'kitchen', label: 'Kitchen', desc: 'Order board only' },
-];
-
-export function StaffPage() {
-  const db = useDB((d) => d);
-  return (
-    <>
-      <PageHead title="Staff" sub="Give each person their own PIN so you know who did what." actions={<button className="btn primary" onClick={() => update((d) => { d.staff.push({ id: uid('st'), name: 'New staff', role: 'cashier', pin: String(Math.floor(1000 + Math.random() * 9000)), branchId: d.branches[0].id, active: true }); })}>+ Add staff</button>} />
-      <Card pad={false}>
-        <table className="table">
-          <thead><tr><th>Name</th><th>Role</th><th>Branch</th><th>PIN</th><th>Active</th><th /></tr></thead>
-          <tbody>
-            {db.staff.map((s) => {
-              const set = (p: Partial<typeof s>) => update((d) => { Object.assign(d.staff.find((x) => x.id === s.id)!, p); });
-              return (
-                <tr key={s.id}>
-                  <td><input className="input" value={s.name} onChange={(e) => set({ name: e.target.value })} /></td>
-                  <td><select className="input" value={s.role} onChange={(e) => set({ role: e.target.value as StaffRole })}>{ROLES.map((r) => <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>)}</select></td>
-                  <td><select className="input" value={s.branchId} onChange={(e) => set({ branchId: e.target.value })}>{db.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></td>
-                  <td><input className="input mono" style={{ width: 90 }} maxLength={6} value={s.pin} onChange={(e) => set({ pin: e.target.value.replace(/\D/g, '') })} /></td>
-                  <td><Toggle on={s.active} onChange={(active) => set({ active })} /></td>
-                  <td><button className="btn sm ghost" onClick={() => update((d) => { d.staff = d.staff.filter((x) => x.id !== s.id); })}>✕</button></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {!db.staff.length && <Empty title="No staff yet" />}
-      </Card>
-      <p className="small muted">Any active staff PIN — or the admin PIN in Settings — can sign in to the dashboard.</p>
-    </>
-  );
-}
-
 export function PaymentMethods() {
   const pms = useDB((d) => d.paymentMethods);
+  const single = useDB((d) => d.settings.singlePaymentId);
   return (
     <>
-      <PageHead title="Payment Methods" sub="How customers can pay. Shown at checkout with your instructions." actions={<button className="btn primary" onClick={() => update((d) => { d.paymentMethods.push({ id: uid('pm'), name: 'Maya', instructions: 'Scan our QR at the counter.', payAtCounter: false, active: true }); })}>+ Add method</button>} />
-      <div className="grid g2">
+      <PageHead title="Payment methods" sub="Manage the ways customers can pay and upload QR codes from your designated bank or wallet accounts." />
+      <div className="stack lg" style={{ maxWidth: 780 }}>
         {pms.map((p) => {
           const set = (x: Partial<typeof p>) => update((d) => { Object.assign(d.paymentMethods.find((y) => y.id === p.id)!, x); });
           return (
             <div key={p.id} className="card pad stack">
-              <div className="row">
-                <input className="input grow strong" value={p.name} onChange={(e) => set({ name: e.target.value })} />
-                <Toggle on={p.active} onChange={(active) => set({ active })} />
+              <div className="row between wrap">
+                <b style={{ textTransform: 'uppercase' }}>{p.name}</b>
+                <div className="row">
+                  <label className="chk small"><input type="radio" name="single" checked={single === p.id} onChange={() => update((d) => { d.settings.singlePaymentId = p.id; })} /> Use this single payment method at checkout</label>
+                  <Toggle on={p.active} onChange={(active) => set({ active })} label="Active" />
+                </div>
               </div>
-              <Field label="Instructions for the customer"><textarea className="input" value={p.instructions} onChange={(e) => set({ instructions: e.target.value })} /></Field>
-              <ToggleRow label="Pay at counter" on={p.payAtCounter} onChange={(payAtCounter) => set({ payAtCounter })} />
-              <button className="btn sm danger" style={{ alignSelf: 'flex-start' }} onClick={() => update((d) => { d.paymentMethods = d.paymentMethods.filter((x) => x.id !== p.id); })}>Remove</button>
+              <div className="grid g2">
+                <Field label="Payment option name"><input className="input" value={p.name} onChange={(e) => set({ name: e.target.value })} /></Field>
+                <Field label="Type"><select className="input" value={p.kind} onChange={(e) => set({ kind: e.target.value as 'cash' | 'digital' })}><option value="digital">Digital (e-wallet / bank)</option><option value="cash">Cash</option></select></Field>
+              </div>
+              <Field label="Instructions"><textarea className="input" rows={2} value={p.instructions} onChange={(e) => set({ instructions: e.target.value })} /></Field>
+              {p.kind === 'digital' && (
+                <div style={{ border: '1px dashed var(--line-strong)', borderRadius: 14, padding: 16 }} className="stack">
+                  <div className="row between"><div><b>{p.name} QR code</b><div className="small muted">Upload the QR generated by your own bank or e-wallet account.</div></div>{p.qr && <span className="badge green">Image added</span>}</div>
+                  {p.qr && <img src={p.qr} alt="" style={{ width: 180, margin: '0 auto', borderRadius: 12 }} />}
+                  <ImagePicker label={p.qr ? 'Replace QR image' : 'QR image'} value={p.qr} onChange={(qr) => set({ qr })} size={900} />
+                </div>
+              )}
+              <label className="chk small"><input type="checkbox" checked={p.allowProof} onChange={(e) => set({ allowProof: e.target.checked })} /> Allow optional proof of payment upload</label>
+              <button className="btn sm outline danger" style={{ alignSelf: 'flex-start' }} onClick={() => confirmAction('Remove this payment method?') && update((d) => { d.paymentMethods = d.paymentMethods.filter((x) => x.id !== p.id); if (d.settings.singlePaymentId === p.id) d.settings.singlePaymentId = ''; })}>Remove</button>
             </div>
           );
         })}
+        <button className="btn ghost lg" style={{ alignSelf: 'flex-start', color: 'var(--accent)' }} onClick={() => update((d) => { d.paymentMethods.push({ id: uid('pm'), name: 'New method', instructions: 'Scan our QR to pay.', payAtCounter: false, active: true, qr: '', allowProof: true, kind: 'digital' }); })}>+ Add payment method</button>
+        {single && <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => update((d) => { d.settings.singlePaymentId = ''; })}>Offer all active methods at checkout instead</button>}
       </div>
     </>
   );
@@ -134,6 +113,7 @@ const SAMPLE: Order = {
     { key: 'b', itemId: 'it_croissant', name: 'Butter Croissant', unitPrice: 85, unitCost: 30, qty: 1, addons: [], note: 'warm' },
   ],
   subtotal: 375, discount: 0, discountLabel: '', voucherCode: '', serviceCharge: 0, total: 375, cost: 106, paymentMethodId: 'pm_cash', paymentMethodName: 'Cash', paid: true, status: 'completed', stampsEarned: 3,
+  code: '3372', paymentStatus: 'cash', proofImage: '', loyaltyCardCode: '',
 };
 
 export function ReceiptStudio() {
@@ -176,20 +156,21 @@ function QR({ url, label }: { url: string; label: string }) {
 
 export function QRCodes() {
   const [tables, setTables] = useState(6);
-  const origin = location.origin;
+  const origin = location.href.split('#')[0];
   return (
     <>
       <PageHead title="QR Codes" sub="Print and stick these so customers can order or check their stamps from their phone." actions={<button className="btn" onClick={() => window.print()}>Print all</button>} />
       <div className="grid g3 print-area" style={{ marginBottom: 24 }}>
-        <QR url={`${origin}/kiosk`} label="Order menu" />
-        <QR url={`${origin}/loyalty`} label="Loyalty card" />
+        <QR url={`${origin}#/`} label="Order online" />
+        <QR url={`${origin}#/kiosk`} label="Kiosk" />
+        <QR url={`${origin}#/loyalty`} label="Loyalty card" />
       </div>
       <div className="row between" style={{ marginBottom: 12 }}>
         <h3>Table codes</h3>
         <div className="row"><span className="small muted">Tables</span><input className="input" style={{ width: 80 }} type="number" min={1} max={50} value={tables} onChange={(e) => setTables(Math.min(50, Math.max(1, +e.target.value)))} /></div>
       </div>
       <div className="grid g4">
-        {Array.from({ length: tables }, (_, i) => <QR key={i} url={`${origin}/kiosk?table=${i + 1}`} label={`Table ${i + 1}`} />)}
+        {Array.from({ length: tables }, (_, i) => <QR key={i} url={`${origin}#/kiosk?table=${i + 1}`} label={`Table ${i + 1}`} />)}
       </div>
     </>
   );

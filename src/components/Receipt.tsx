@@ -11,7 +11,7 @@ export function Receipt({ order, settings }: { order: Order; settings?: ReceiptS
   const branch = db.branches.find((x) => x.id === order.branchId);
   const [qr, setQr] = useState('');
   useEffect(() => {
-    if (r.showQr) QRCode.toDataURL(`${location.origin}/order/${order.id}`, { margin: 0, width: 120 }).then(setQr);
+    if (r.showQr) QRCode.toDataURL(`${location.href.split("#")[0]}#/order/${order.code}`, { margin: 0, width: 120 }).then(setQr);
   }, [order.id, r.showQr]);
   const vatable = db.settings.taxIncluded ? order.total / (1 + db.settings.taxPct / 100) : order.total;
   return (
@@ -21,7 +21,7 @@ export function Receipt({ order, settings }: { order: Order; settings?: ReceiptS
       {branch && <div className="c">{branch.name}<br />{branch.address}</div>}
       {r.header && <div className="c" style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{r.header}</div>}
       <hr />
-      <div className="r"><span>Order #{order.number}</span><span>{order.orderTypeName}</span></div>
+      <div className="r"><span>Order #{order.code}</span><span>{order.orderTypeName}</span></div>
       <div>{fmtDateTime(order.createdAt)}</div>
       {order.customerName && <div>Name: {order.customerName}</div>}
       {order.tableNo && <div>Table: {order.tableNo}</div>}

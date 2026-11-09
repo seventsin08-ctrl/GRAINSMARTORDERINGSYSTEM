@@ -1,8 +1,8 @@
 import { useRef, useSyncExternalStore } from 'react';
-import { seed } from './seed';
-import type { CartLine, DB, Order, OrderStatus, StockLog } from './types';
+import { seed, DEFAULT_BRANDING } from './seed';
+import type { CartLine, DB, Order, OrderStatus, Staff, StockLog } from './types';
 
-const KEY = 'grainsmart.db.v1';
+const KEY = 'grainsmart.db.v2';
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('grainsmart') : null;
 
 function load(): DB {
@@ -10,12 +10,18 @@ function load(): DB {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as DB;
-      // shallow-merge with seed so new fields added later still exist
       const base = seed();
+      if (parsed.version !== base.version) return base;
       return {
         ...base,
         ...parsed,
-        branding: { ...base.branding, ...parsed.branding, hero: { ...base.branding.hero, ...parsed.branding?.hero }, welcome: { ...base.branding.welcome, ...parsed.branding?.welcome } },
+        branding: {
+          ...DEFAULT_BRANDING,
+          ...parsed.branding,
+          hero: { ...DEFAULT_BRANDING.hero, ...parsed.branding?.hero },
+          welcome: { ...DEFAULT_BRANDING.welcome, ...parsed.branding?.welcome },
+          story: { ...DEFAULT_BRANDING.story, ...parsed.branding?.story },
+        },
         settings: { ...base.settings, ...parsed.settings },
         receipt: { ...base.receipt, ...parsed.receipt },
         loyalty: { ...base.loyalty, ...parsed.loyalty },
@@ -125,7 +131,7 @@ function deductForOrder(d: DB, order: Order, by: string) {
         delta: 0,
         after: it?.stock[order.branchId] ?? 0,
         orderId: order.id,
-        orderNumber: order.number,
+        orderNumber: order.code,
         by,
         note: 'Stock was already deducted for this order',
       });
@@ -143,7 +149,7 @@ function deductForOrder(d: DB, order: Order, by: string) {
         delta: 0,
         after: 0,
         orderId: order.id,
-        orderNumber: order.number,
+        orderNumber: order.code,
         by,
         note: 'Item no longer exists on the menu',
       });
@@ -161,7 +167,7 @@ function deductForOrder(d: DB, order: Order, by: string) {
       delta: -line.qty,
       after: it.stock[order.branchId],
       orderId: order.id,
-      orderNumber: order.number,
+      orderNumber: order.code,
       by,
       note: '',
     });
@@ -185,7 +191,7 @@ function restoreForOrder(d: DB, order: Order, by: string) {
       delta: line.qty,
       after: it.stock[order.branchId],
       orderId: order.id,
-      orderNumber: order.number,
+      orderNumber: order.code,
       by,
       note: 'Order cancelled',
     });
@@ -240,6 +246,8 @@ export interface PlaceOrderInput {
   paymentMethodId: string;
   tableNo: string;
   govDiscount?: { type: 'senior' | 'pwd'; idNumber: string; name: string };
+  proofImage?: string;
+  loyaltyCardCode?: string;
 }
 
 export interface Pricing {
@@ -297,10 +305,8 @@ export function placeOrder(input: PlaceOrderInput): Order {
         c = { id: uid('cu'), name: input.customerName || 'Guest', phone, createdAt: Date.now(), stamps: 0, rewardsRedeemed: 0, optInTexts: true };
         d.customers.push(c);
       } else if (input.customerName) c.name = input.customerName;
-      if (d.loyalty.enabled) {
-        stampsEarned = Math.floor(pricing.total / Math.max(1, d.loyalty.spendPerStamp));
-      }
     }
+    if (d.loyalty.enabled) stampsEarned = pointsFor(d, input.lines, pricing.total);
     const order: Order = {
       id: uid('or'),
       number: d.nextOrderNumber++,
@@ -326,13 +332,17 @@ export function placeOrder(input: PlaceOrderInput): Order {
       tableNo: input.tableNo,
       govDiscount: input.govDiscount,
       stampsEarned,
+      code: newCode(d),
+      paymentStatus: 'due',
+      proofImage: input.proofImage ?? '',
+      loyaltyCardCode: (input.loyaltyCardCode ?? '').trim().toUpperCase(),
     };
     if (order.voucherCode) {
       const v = d.vouchers.find((x) => x.code.toUpperCase() === order.voucherCode);
       if (v) v.used++;
     }
     if (input.govDiscount) {
-      d.govLog.unshift({ id: uid('gd'), at: Date.now(), orderId: order.id, orderNumber: order.number, type: input.govDiscount.type, name: input.govDiscount.name, idNumber: input.govDiscount.idNumber, discount: pricing.discount });
+      d.govLog.unshift({ id: uid('gd'), at: Date.now(), orderId: order.id, orderNumber: order.code, type: input.govDiscount.type, name: input.govDiscount.name, idNumber: input.govDiscount.idNumber, discount: pricing.discount });
     }
     d.orders.unshift(order);
     deductForOrder(d, order, 'Kiosk');
@@ -354,30 +364,138 @@ export function setOrderStatus(orderId: string, status: OrderStatus, by = 'Admin
     }
     if (prev === 'cancelled' && status !== 'cancelled') deductForOrder(d, o, by);
     if (status === 'completed') {
-      o.paid = true;
+      if (!o.paid) {
+        o.paid = true;
+        if (o.paymentStatus === 'due') o.paymentStatus = d.paymentMethods.find((p) => p.id === o.paymentMethodId)?.kind ?? 'cash';
+      }
       awardStamps(d, o);
     }
   });
 }
 
+export function pointsFor(d: DB, lines: CartLine[], total: number) {
+  const l = d.loyalty;
+  if (l.earnBy === 'spend') return Math.floor(total / Math.max(1, l.spendPerStamp)) * l.pointsPer;
+  return lines.filter((x) => l.eligibleItemIds.includes(x.itemId)).reduce((s, x) => s + x.qty, 0) * l.pointsPer;
+}
+
 function awardStamps(d: DB, o: Order) {
-  if (!o.customerPhone || !d.loyalty.enabled || !o.stampsEarned) return;
-  const c = d.customers.find((x) => x.phone === o.customerPhone);
-  if (!c) return;
-  // only once per order
-  if ((o as Order & { stampsAwarded?: boolean }).stampsAwarded) return;
-  (o as Order & { stampsAwarded?: boolean }).stampsAwarded = true;
-  c.stamps += o.stampsEarned;
+  if (!d.loyalty.enabled || !o.stampsEarned || o.pointsAwarded) return;
+  let given = false;
+  if (o.customerPhone) {
+    const c = d.customers.find((x) => x.phone === o.customerPhone);
+    if (c) {
+      c.stamps += o.stampsEarned;
+      given = true;
+    }
+  }
+  if (o.loyaltyCardCode) {
+    const card = d.loyaltyCards.find((c) => c.code === o.loyaltyCardCode && c.active);
+    if (card) {
+      card.points += o.stampsEarned;
+      card.history.unshift({ at: Date.now(), delta: o.stampsEarned, note: `Order #${o.code}` });
+      given = true;
+    }
+  }
+  if (given) o.pointsAwarded = true;
+}
+
+/** Record how an order was paid. 'due' marks it unpaid again. */
+export function markPayment(orderId: string, kind: 'cash' | 'digital' | 'due') {
+  update((d) => {
+    const o = d.orders.find((x) => x.id === orderId);
+    if (!o) return;
+    o.paymentStatus = kind;
+    o.paid = kind !== 'due';
+    o.updatedAt = Date.now();
+    if (o.paid) awardStamps(d, o);
+  });
+}
+
+function newCode(d: DB) {
+  for (let i = 0; i < 50; i++) {
+    const c = String(Math.floor(1000 + Math.random() * 9000));
+    if (!d.orders.some((o) => o.code === c)) return c;
+  }
+  return String(d.nextOrderNumber);
 }
 
 export function markPaid(orderId: string, paid: boolean) {
-  update((d) => {
-    const o = d.orders.find((x) => x.id === orderId);
-    if (o) {
-      o.paid = paid;
-      o.updatedAt = Date.now();
+  const o = state.orders.find((x) => x.id === orderId);
+  const kind = state.paymentMethods.find((p) => p.id === o?.paymentMethodId)?.kind ?? 'cash';
+  markPayment(orderId, paid ? kind : 'due');
+}
+
+/* ------------------------------------------------------------------ */
+/* Auth                                                                */
+/* ------------------------------------------------------------------ */
+
+const AUTH = 'gs.user';
+export function currentUser(): Staff | null {
+  let id: string | null = null;
+  try {
+    id = sessionStorage.getItem(AUTH) ?? localStorage.getItem(AUTH);
+    const exp = Number(localStorage.getItem(AUTH + '.exp') ?? 0);
+    if (!sessionStorage.getItem(AUTH) && exp && exp < Date.now()) {
+      localStorage.removeItem(AUTH);
+      id = null;
     }
-  });
+  } catch {
+    /* storage blocked */
+  }
+  const u = state.staff.find((s) => s.id === id && s.active);
+  return u ?? null;
+}
+
+export function useUser() {
+  return useDB(() => currentUser());
+}
+
+export function login(username: string, password: string, keep: boolean): Staff | null {
+  const u = state.staff.find((s) => s.active && s.username.toLowerCase() === username.trim().toLowerCase() && s.password === password);
+  if (!u) return null;
+  try {
+    if (keep) {
+      localStorage.setItem(AUTH, u.id);
+      localStorage.setItem(AUTH + '.exp', String(Date.now() + 30 * 86400000));
+    } else sessionStorage.setItem(AUTH, u.id);
+  } catch {
+    /* ignore */
+  }
+  emit();
+  return u;
+}
+
+export function logout(clear = false) {
+  try {
+    sessionStorage.removeItem(AUTH);
+    localStorage.removeItem(AUTH);
+    localStorage.removeItem(AUTH + '.exp');
+    if (clear) localStorage.removeItem('gs.theme');
+  } catch {
+    /* ignore */
+  }
+  emit();
+}
+
+export function can(u: Staff | null, perm: Staff['perms'][number]) {
+  if (!u) return false;
+  return u.role === 'owner' || u.role === 'admin' || u.perms.includes(perm);
+}
+
+/** Expected cash in drawer for an open (or closed) session. */
+export function sessionExpected(d: DB, sid: string) {
+  const s = d.cashSessions.find((x) => x.id === sid);
+  if (!s) return 0;
+  const end = s.closedAt ?? Infinity;
+  const cashSales = d.orders
+    .filter((o) => o.paymentStatus === 'cash' && o.status !== 'cancelled' && o.updatedAt >= s.openedAt && o.updatedAt <= end)
+    .reduce((a, o) => a + o.total, 0);
+  const cashExp = d.expenses
+    .filter((e) => e.paidWith === 'cash' && e.at >= s.openedAt && e.at <= end)
+    .reduce((a, e) => a + e.amount, 0);
+  const mv = s.movements.reduce((a, m) => a + (m.type === 'in' ? m.amount : -m.amount), 0);
+  return s.float + cashSales + mv - cashExp;
 }
 
 /** Tries deducting again — used by the admin "re-deduct" button to demonstrate the guard. */

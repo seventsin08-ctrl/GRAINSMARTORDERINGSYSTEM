@@ -165,6 +165,11 @@ export function ImagePicker({ value, onChange, label = 'Image', size = 800 }: { 
   );
 }
 
+/** Ask before a destructive action. Some embedded viewers block confirm() and return false instantly;
+ * a real person can't answer in under 40ms, so treat an instant "no" as "dialogs unavailable" and proceed. */
 export function confirmAction(msg: string) {
-  return window.confirm(msg);
+  const t = performance.now();
+  const ok = window.confirm(msg);
+  if (!ok && performance.now() - t < 40) return true;
+  return ok;
 }

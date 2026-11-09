@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { lineTotal, placeOrder, priceOrder, useDB, getDB } from '../store/db';
 import type { AddonOption, Branding, CartLine, MenuItem, Order } from '../store/types';
-import { brandVars } from '../lib/theme';
-import { money } from '../lib/format';
+import { shopVars } from '../lib/theme';
+import { fileToDataURL, money } from '../lib/format';
 
 export type KioskScreen = 'welcome' | 'type' | 'menu' | 'cart' | 'checkout' | 'done';
 
@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function Logo({ b, cls }: { b: Branding; cls: string }) {
-  return <div className={cls}>{b.logo ? <img src={b.logo} alt="" /> : <span>🌾</span>}</div>;
+  return <div className={cls}>{b.logo ? <img src={b.logo} alt="" /> : <span>🍃</span>}</div>;
 }
 
 export default function Kiosk({ branding: brandingOverride, screen: forced, preview }: Props) {
@@ -79,7 +79,7 @@ export default function Kiosk({ branding: brandingOverride, screen: forced, prev
   const ot = db.orderTypes.find((o) => o.id === orderTypeId);
 
   return (
-    <div className="kiosk" style={brandVars(b)}>
+    <div className="kiosk" style={shopVars(b)}>
       {screen === 'welcome' && (
         <div
           className="k-welcome"
@@ -214,6 +214,7 @@ function demoOrder(cart: CartLine[]): Order {
     id: 'preview', number: 123, createdAt: Date.now(), updatedAt: Date.now(), branchId: '', orderTypeId: '', orderTypeName: 'Dine in',
     customerName: 'Juan', customerPhone: '', lines: cart, subtotal: total, discount: 0, discountLabel: '', voucherCode: '', serviceCharge: 0,
     total, cost: 0, paymentMethodId: '', paymentMethodName: 'Cash', paid: false, status: 'pending', tableNo: '', stampsEarned: 0,
+    code: '3372', paymentStatus: 'due', proofImage: '', loyaltyCardCode: '',
   };
 }
 
@@ -332,7 +333,9 @@ function MenuView({ b, onOpen, cart }: { b: Branding; onOpen: (i: MenuItem) => v
   );
 }
 
-function makeLine(item: MenuItem, addons: CartLine['addons'], qty: number, note: string): CartLine {
+export const trackUrl = (code: string) => `${location.href.split('#')[0]}#/order/${code}`;
+
+export function makeLine(item: MenuItem, addons: CartLine['addons'], qty: number, note: string): CartLine {
   return {
     key: `${item.id}|${addons.map((a) => a.name).join(',')}|${note}`,
     itemId: item.id,
@@ -345,7 +348,7 @@ function makeLine(item: MenuItem, addons: CartLine['addons'], qty: number, note:
   };
 }
 
-function ItemSheet({ item, b, onClose, onAdd }: { item: MenuItem; b: Branding; onClose: () => void; onAdd: (l: CartLine) => void }) {
+export function ItemSheet({ item, b, onClose, onAdd }: { item: MenuItem; b: Branding; onClose: () => void; onAdd: (l: CartLine) => void }) {
   const groups = useDB((d) => d.addonGroups.filter((g) => item.addonGroupIds.includes(g.id)));
   const [sel, setSel] = useState<Record<string, string[]>>(() => Object.fromEntries(groups.filter((g) => g.required && !g.multiple).map((g) => [g.id, [g.options[0]?.id].filter(Boolean)])));
   const [qty, setQty] = useState(1);
@@ -427,7 +430,7 @@ function ItemSheet({ item, b, onClose, onAdd }: { item: MenuItem; b: Branding; o
   );
 }
 
-function CartView({ b, cart, setCart, onBack, onNext }: { b: Branding; cart: CartLine[]; setCart: (f: (c: CartLine[]) => CartLine[]) => void; onBack: () => void; onNext: () => void; onOpen: (i: MenuItem) => void }) {
+export function CartView({ b, cart, setCart, onBack, onNext }: { b: Branding; cart: CartLine[]; setCart: (f: (c: CartLine[]) => CartLine[]) => void; onBack: () => void; onNext: () => void; onOpen: (i: MenuItem) => void }) {
   const items = useDB((d) => d.items);
   const subtotal = cart.reduce((s, l) => s + lineTotal(l), 0);
   const setQty = (key: string, q: number) => setCart((c) => (q <= 0 ? c.filter((l) => l.key !== key) : c.map((l) => (l.key === key ? { ...l, qty: q } : l))));
@@ -485,10 +488,15 @@ function CartView({ b, cart, setCart, onBack, onNext }: { b: Branding; cart: Car
   );
 }
 
-function Checkout({ cart, orderTypeId, onBack, onPlaced, preview }: { cart: CartLine[]; orderTypeId: string; onBack: () => void; onPlaced: (o: Order) => void; preview?: boolean }) {
+export function Checkout({ cart, orderTypeId: initialType, onBack, onPlaced, preview }: { cart: CartLine[]; orderTypeId: string; onBack: () => void; onPlaced: (o: Order) => void; preview?: boolean }) {
   const db = useDB((d) => d);
+  const types = db.orderTypes.filter((o) => o.active);
+  const [orderTypeId, setOrderTypeId] = useState(initialType || types[0]?.id || '');
   const ot = db.orderTypes.find((o) => o.id === orderTypeId);
-  const pms = db.paymentMethods.filter((p) => p.active);
+  const single = db.paymentMethods.find((p) => p.id === db.settings.singlePaymentId && p.active);
+  const pms = single ? [single] : db.paymentMethods.filter((p) => p.active);
+  const [proof, setProof] = useState('');
+  const [card, setCard] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [table, setTable] = useState('');
@@ -507,6 +515,18 @@ function Checkout({ cart, orderTypeId, onBack, onPlaced, preview }: { cart: Cart
   return (
     <div className="k-page">
       <h1>Almost there</h1>
+      {types.length > 1 && (
+        <div className="k-box">
+          <b style={{ fontSize: 18, display: 'block', marginBottom: 12 }}>Order method</b>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {types.map((t) => (
+              <button key={t.id} className={`opt ${orderTypeId === t.id ? 'on' : ''}`} onClick={() => setOrderTypeId(t.id)}>
+                {t.icon} {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="k-box stack" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <b style={{ fontSize: 18 }}>Your details</b>
         <input className="kin" placeholder="Name (for calling your order)" value={name} onChange={(e) => setName(e.target.value)} />
@@ -517,6 +537,7 @@ function Checkout({ cart, orderTypeId, onBack, onPlaced, preview }: { cart: Cart
           </div>
         )}
         {ot?.askTable && <input className="kin" placeholder="Table number" value={table} onChange={(e) => setTable(e.target.value)} />}
+        {db.loyalty.enabled && <input className="kin" placeholder="Loyalty card code (optional)" value={card} onChange={(e) => setCard(e.target.value.toUpperCase())} />}
       </div>
 
       <div className="k-box">
@@ -530,6 +551,23 @@ function Checkout({ cart, orderTypeId, onBack, onPlaced, preview }: { cart: Cart
             <span style={{ fontSize: 22 }}>{pm === p.id ? '●' : '○'}</span>
           </button>
         ))}
+        {(() => {
+          const sel = pms.find((p) => p.id === pm);
+          if (!sel || (!sel.qr && !sel.allowProof)) return null;
+          return (
+            <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+              {sel.qr && <div className="qr-box"><img src={sel.qr} alt={`${sel.name} QR`} /></div>}
+              {sel.allowProof && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }}>
+                  <b>Proof of payment (optional)</b>
+                  <span className="k-muted" style={{ fontSize: 14 }}>Upload a screenshot of your transfer.</span>
+                  {proof ? <img src={proof} alt="" style={{ width: 90, borderRadius: 10 }} /> : <span className="kbtn soft sm">Choose image</span>}
+                  <input type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) setProof(await fileToDataURL(f, 900)); }} />
+                </label>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       <div className="k-box" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -572,7 +610,7 @@ function Checkout({ cart, orderTypeId, onBack, onPlaced, preview }: { cart: Cart
         <button
           className="kbtn block"
           disabled={!canPlace || !!preview}
-          onClick={() => onPlaced(placeOrder({ orderTypeId, customerName: name.trim(), customerPhone: phone, lines: cart, voucherCode: pricing.voucherError ? '' : applied, paymentMethodId: pm, tableNo: table.trim(), govDiscount }))}
+          onClick={() => onPlaced(placeOrder({ orderTypeId, customerName: name.trim(), customerPhone: phone, lines: cart, voucherCode: pricing.voucherError ? '' : applied, paymentMethodId: pm, tableNo: table.trim(), govDiscount, proofImage: proof, loyaltyCardCode: card }))}
         >
           Place order · {money(pricing.total)}
         </button>
@@ -581,14 +619,14 @@ function Checkout({ cart, orderTypeId, onBack, onPlaced, preview }: { cart: Cart
   );
 }
 
-function Done({ b, order, onNew }: { b: Branding; order: Order | null; onNew: () => void }) {
+export function Done({ b, order, onNew }: { b: Branding; order: Order | null; onNew: () => void }) {
   const [qr, setQr] = useState('');
   const [left, setLeft] = useState(30);
   const live = useDB((d) => d.orders.find((o) => o.id === order?.id));
   const pm = useDB((d) => d.paymentMethods.find((p) => p.id === order?.paymentMethodId));
   useEffect(() => {
     if (!order) return;
-    QRCode.toDataURL(`${location.origin}/order/${order.id}`, { margin: 1, width: 240 }).then(setQr).catch(() => {});
+    QRCode.toDataURL(trackUrl(order.code), { margin: 1, width: 240 }).then(setQr).catch(() => {});
   }, [order]);
   useEffect(() => {
     if (!order || order.id === 'preview') return;
@@ -603,11 +641,11 @@ function Done({ b, order, onNew }: { b: Branding; order: Order | null; onNew: ()
   return (
     <div className="k-page k-done">
       <div className="check">✓</div>
-      <p className="k-muted" style={{ fontSize: 18, margin: 0 }}>Your order number</p>
-      <div className="big">{o ? `#${o.number}` : '#—'}</div>
+      <p className="k-muted" style={{ fontSize: 18, margin: 0 }}>Your order code</p>
+      <div className="big">{o ? `#${o.code}` : '#—'}</div>
       <h1 style={{ marginTop: 18 }}>Thank you{o?.customerName && o.customerName !== 'Guest' ? `, ${o.customerName}` : ''}!</h1>
       <p className="k-muted" style={{ fontSize: 17 }}>{pm?.instructions ?? 'Please proceed to the counter.'} Total: <b style={{ color: 'var(--k-text)' }}>{o ? money(o.total) : ''}</b></p>
-      {o && o.stampsEarned > 0 && loyalty.enabled && <p style={{ fontSize: 16 }}>⭐ You'll earn {o.stampsEarned} stamp{o.stampsEarned > 1 ? 's' : ''} once your order is completed.</p>}
+      {o && o.stampsEarned > 0 && loyalty.enabled && <p style={{ fontSize: 16 }}>⭐ You'll earn {o.stampsEarned} loyalty point{o.stampsEarned > 1 ? 's' : ''} once your order is paid.</p>}
       {qr && (
         <div style={{ display: 'inline-flex', gap: 16, alignItems: 'center', background: 'var(--k-surface)', padding: 16, borderRadius: 20, margin: '12px 0 24px', textAlign: 'left' }}>
           <img src={qr} alt="QR to track order" width={110} height={110} style={{ borderRadius: 8 }} />

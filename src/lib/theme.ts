@@ -50,3 +50,33 @@ export function brandVars(b: Branding): CSSProperties {
     colorScheme: b.mode,
   } as CSSProperties;
 }
+
+export const FONT_PAIRS: { id: Branding['fontPair']; label: string; head: string; body: string; weight: number }[] = [
+  { id: 'warm', label: 'Warm classic', head: "'Newsreader', Georgia, 'Times New Roman', serif", body: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif", weight: 500 },
+  { id: 'modern', label: 'Clean modern', head: "'Inter', -apple-system, 'Segoe UI', sans-serif", body: "'Inter', -apple-system, 'Segoe UI', sans-serif", weight: 700 },
+  { id: 'editorial', label: 'Editorial', head: "'Playfair Display', Georgia, serif", body: "'Source Sans 3', -apple-system, sans-serif", weight: 600 },
+  { id: 'rounded', label: 'Friendly rounded', head: "'Nunito', ui-rounded, 'Segoe UI', sans-serif", body: "'Nunito', ui-rounded, sans-serif", weight: 800 },
+  { id: 'humanist', label: 'Humanist', head: "'Source Sans 3', -apple-system, sans-serif", body: "'Source Sans 3', -apple-system, sans-serif", weight: 700 },
+  { id: 'geometric', label: 'Geometric', head: "'DM Sans', -apple-system, sans-serif", body: "'DM Sans', -apple-system, sans-serif", weight: 700 },
+  { id: 'softdisplay', label: 'Soft display', head: "'Fraunces', Georgia, serif", body: "-apple-system, 'Inter', sans-serif", weight: 500 },
+  { id: 'compact', label: 'Compact', head: "'Inter', -apple-system, sans-serif", body: "'Inter', -apple-system, sans-serif", weight: 600 },
+];
+
+export const LOOKS: { id: Branding['look']; label: string; values: Partial<Branding> }[] = [
+  { id: 'garden', label: 'Garden', values: { mode: 'light', accent: '#2f5640', accentText: '#ffffff', background: '#fbfaf6', surface: '#ffffff', text: '#1f2a22' } },
+  { id: 'sunday', label: 'Sunday café', values: { mode: 'light', accent: '#8a5a2b', accentText: '#ffffff', background: '#fbf5ec', surface: '#ffffff', text: '#2b2118' } },
+  { id: 'afterdark', label: 'After dark', values: { mode: 'dark', accent: '#c9a26b', accentText: '#1a1712', background: '#161512', surface: '#211f1b', text: '#f1ece2' } },
+];
+
+export function shopVars(b: Branding): CSSProperties {
+  const fp = FONT_PAIRS.find((f) => f.id === b.fontPair) ?? FONT_PAIRS[0];
+  return {
+    ...brandVars(b),
+    '--k-font': fp.head,
+    '--s-head': fp.head,
+    '--s-body': fp.body,
+    '--s-head-weight': fp.weight,
+    fontFamily: fp.body,
+    fontSize: b.fontPair === 'compact' ? 14 : 15,
+  } as CSSProperties;
+}

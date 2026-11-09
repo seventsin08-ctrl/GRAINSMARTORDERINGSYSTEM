@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { lineTotal, useDB } from '../store/db';
-import { brandVars } from '../lib/theme';
+import { shopVars } from '../lib/theme';
 import { money, fmtTime } from '../lib/format';
 import { Logo } from './Kiosk';
 
@@ -15,10 +15,10 @@ const STEPS = [
 export function OrderStatusPage() {
   const { id } = useParams();
   const b = useDB((d) => d.branding);
-  const o = useDB((d) => d.orders.find((x) => x.id === id));
+  const o = useDB((d) => d.orders.find((x) => x.id === id || x.code === id));
   const idx = o ? STEPS.findIndex((s) => s.key === o.status) : -1;
   return (
-    <div className="kiosk" style={brandVars(b)}>
+    <div className="kiosk" style={shopVars(b)}>
       <div className="k-page">
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24 }}>
           <Logo b={b} cls="k-mini-logo" />
@@ -31,7 +31,7 @@ export function OrderStatusPage() {
           </div>
         ) : (
           <>
-            <p className="k-muted" style={{ margin: 0 }}>Order #{o.number} · {fmtTime(o.createdAt)} · {o.orderTypeName}</p>
+            <p className="k-muted" style={{ margin: 0 }}>Order #{o.code} · {fmtTime(o.createdAt)} · {o.orderTypeName}</p>
             <h1 style={{ marginTop: 6 }}>
               {o.status === 'cancelled' ? 'Order cancelled' : o.status === 'ready' ? 'Ready for pickup! 🎉' : o.status === 'completed' ? 'Enjoy your meal' : o.status === 'preparing' ? 'Being prepared…' : 'Order received'}
             </h1>
@@ -83,19 +83,31 @@ export function LoyaltyPage() {
   const customers = useDB((d) => d.customers);
   const [phone, setPhone] = useState('');
   const c = customers.find((x) => x.phone === phone.replace(/\D/g, ''));
+  const card = useDB((d) => d.loyaltyCards.find((x) => x.active && x.code === phone.trim().toUpperCase()));
   const have = c ? c.stamps % loyalty.stampsForReward : 0;
   return (
-    <div className="kiosk" style={brandVars(b)}>
+    <div className="kiosk" style={shopVars(b)}>
       <div className="k-page">
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24 }}>
           <Logo b={b} cls="k-mini-logo" />
           <b style={{ fontSize: 18 }}>{b.storeName}</b>
           <span className="grow" />
-          <Link to="/kiosk" className="k-pill" style={{ textDecoration: 'none' }}>Order now</Link>
+          <Link to="/" className="k-pill" style={{ textDecoration: 'none' }}>Order now</Link>
         </div>
         <h1>Loyalty card</h1>
         <div className="k-box" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <input className="kin" inputMode="tel" placeholder="Enter your mobile number" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input className="kin" inputMode="tel" placeholder="Mobile number or loyalty card code" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          {card && (
+            <>
+              <b style={{ fontSize: 20 }}>Card {card.code.slice(0, 4)}••••</b>
+              <div className="stamps">
+                {Array.from({ length: loyalty.stampsForReward }, (_, i) => (
+                  <i key={i} className={i < card.points % loyalty.stampsForReward ? 'on' : ''}>{i < card.points % loyalty.stampsForReward ? '★' : ''}</i>
+                ))}
+              </div>
+              <p className="k-muted" style={{ margin: 0 }}>{card.points} points · {Math.floor(card.points / loyalty.stampsForReward) - card.redeemed} free drink(s) ready</p>
+            </>
+          )}
           {phone.replace(/\D/g, '').length >= 10 && !c && <p className="k-muted" style={{ margin: 0 }}>No card yet — add your number at checkout to start collecting.</p>}
           {c && (
             <>
@@ -112,7 +124,7 @@ export function LoyaltyPage() {
             </>
           )}
         </div>
-        <p className="k-muted" style={{ fontSize: 14 }}>Earn 1 stamp for every {money(loyalty.spendPerStamp)} spent.</p>
+        <p className="k-muted" style={{ fontSize: 14 }}>{loyalty.earnBy === 'spend' ? `Earn ${loyalty.pointsPer} point for every ${money(loyalty.spendPerStamp)} spent.` : `Earn ${loyalty.pointsPer} point for every eligible drink on a paid order.`}</p>
       </div>
     </div>
   );

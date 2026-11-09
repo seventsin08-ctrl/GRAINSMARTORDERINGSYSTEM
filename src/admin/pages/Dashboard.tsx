@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useDB } from '../../store/db';
+import { useDB, useUser } from '../../store/db';
 import type { Order } from '../../store/types';
 import { Card, Empty, Seg, Stat } from '../../components/ui';
-import { money, moneyShort, pctChange, rangeDays, rangeStart } from '../../lib/format';
+import { moneyShort, pctChange, rangeDays, rangeStart } from '../../lib/format';
 
 export const counted = (o: Order) => o.status !== 'cancelled';
 
@@ -75,147 +75,146 @@ export function DailyChart({ orders, days }: { orders: Order[]; days: number }) 
 
 export default function Dashboard() {
   const db = useDB((d) => d);
+  const u = useUser();
   const [range, setRange] = useState('7d');
+  const [, setTick] = useState(0);
   const from = rangeStart(range);
   const len = rangeDays(range) * 86400000;
-  const cur = inRange(db.orders, from);
-  const prev = inRange(db.orders, from - len, from);
+  const all = inRange(db.orders, from);
+  const cur = all.filter((o) => o.paid);
+  const prev = inRange(db.orders, from - len, from).filter((o) => o.paid);
   const sales = cur.reduce((s, o) => s + o.total, 0);
   const prevSales = prev.reduce((s, o) => s + o.total, 0);
-  const newCust = db.customers.filter((c) => c.createdAt >= from).length;
-  const prevNew = db.customers.filter((c) => c.createdAt >= from - len && c.createdAt < from).length;
-  const phones = new Set(cur.map((o) => o.customerPhone).filter(Boolean));
-  const returning = [...phones].filter((p) => db.orders.some((o) => o.customerPhone === p && o.createdAt < from && counted(o))).length;
-  const prevPhones = new Set(prev.map((o) => o.customerPhone).filter(Boolean));
-  const prevReturning = [...prevPhones].filter((p) => db.orders.some((o) => o.customerPhone === p && o.createdAt < from - len)).length;
+  const awaiting = all.filter((o) => !o.paid).length;
   const inProgress = db.orders.filter((o) => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready');
-  const todayStart = rangeStart('today');
-  const todayOrders = inRange(db.orders, todayStart);
-  const textable = db.customers.filter((c) => c.optInTexts && c.phone).length;
   const lowStock = db.items.filter((i) => i.trackStock && (i.stock[db.settings.activeBranchId] ?? 0) <= i.lowStockAt);
-  const best = bestSellers(cur).slice(0, 5);
-  const byType = db.orderTypes.map((t) => ({ name: t.name, v: cur.filter((o) => o.orderTypeId === t.id).reduce((s, o) => s + o.total, 0) }));
+  const best = bestSellers(cur).slice(0, 6);
+  const newCust = db.customers.filter((c) => c.createdAt >= from).length;
+  const days = Array.from(new Set(cur.map((o) => new Date(o.createdAt).toISOString().slice(0, 10)))).sort().reverse().slice(0, 7);
+  const byDay = days.map((d) => ({ d, v: cur.filter((o) => new Date(o.createdAt).toISOString().slice(0, 10) === d).reduce((s, o) => s + o.total, 0) }));
+  const maxDay = Math.max(1, ...byDay.map((x) => x.v));
   const hour = new Date().getHours();
-  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good day' : 'Good evening';
 
   const todos = [
-    !db.loyalty.enabled && { to: '/admin/loyalty', t: 'Start a stamp card', d: 'Stamps bring customers back, and they share their number to get them.' },
-    db.loyalty.enabled && db.customers.length === 0 && { to: '/admin/loyalty', t: 'Collect your first stamp', d: 'Ask customers for their number at checkout.' },
-    lowStock.length > 0 && { to: '/admin/inventory', t: `${lowStock.length} item${lowStock.length > 1 ? 's' : ''} running low`, d: lowStock.slice(0, 3).map((i) => i.name).join(', ') },
-    !db.branding.logo && { to: '/admin/branding', t: 'Add your logo', d: 'Make the kiosk feel like your store.' },
-    db.orders.filter((o) => o.status === 'pending').length > 0 && { to: '/admin/orders', t: 'Orders waiting to be accepted', d: 'New orders need your attention.' },
-  ].filter(Boolean) as { to: string; t: string; d: string }[];
+    { to: '/admin/menu', t: 'Review your menu', d: 'Keep products and availability up to date.', i: '+' },
+    { to: '/admin/loyalty', t: 'Build customer loyalty', d: 'Manage your configurable rewards program.', i: '✧' },
+    lowStock.length > 0 && { to: '/admin/inventory', t: `${lowStock.length} item${lowStock.length > 1 ? 's' : ''} running low`, d: lowStock.slice(0, 3).map((i) => i.name).join(', '), i: '!' },
+    db.orders.some((o) => o.status === 'pending') && { to: '/admin/orders', t: 'Orders waiting', d: 'New orders need your attention.', i: '▤' },
+    !db.cashSessions.some((s) => !s.closedAt) && { to: '/admin/cash', t: 'Open the register', d: 'Start a cashier session before accepting cash.', i: '₱' },
+  ].filter(Boolean) as { to: string; t: string; d: string; i: string }[];
+
+  const statCard = (ic: string, bg: string, label: string, v: string | number, sub: string) => (
+    <div className="card stat">
+      <div className="ic" style={{ background: bg }}>{ic}</div>
+      <div className="small muted">{label}</div>
+      <div className="v" style={{ fontSize: 24 }}>{v}</div>
+      <div className="small faint" style={{ clear: 'both', paddingLeft: 50 }}>{sub}</div>
+    </div>
+  );
 
   return (
     <>
-      <p className="muted" style={{ margin: 0 }}>{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</p>
       <div className="page-head">
         <div>
-          <h1>
-            {greet}, {db.branding.storeName}
-          </h1>
+          <div className="eyebrow">Shop overview</div>
+          <h1>{greet}, {u?.name}</h1>
+          <p>A clear look at how your store is doing.</p>
         </div>
-        <a className="btn" href="/kiosk" target="_blank" rel="noreferrer">
-          View storefront ↗
-        </a>
+        <button className="btn outline lg" onClick={() => setTick((t) => t + 1)}>↻ Refresh</button>
       </div>
 
-      <Link to="/admin/orders" className="card pad row between" style={{ marginBottom: 24, color: 'inherit', textDecoration: 'none' }}>
+      <Link to="/admin/orders" className="card pad row between" style={{ marginBottom: 22, color: 'inherit', textDecoration: 'none' }}>
         <div className="row">
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center', fontSize: 20 }}>☰</div>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--fill)', display: 'grid', placeItems: 'center' }}>▣</div>
           <div>
-            <div className="strong" style={{ fontSize: 17 }}>
-              {inProgress.length} order{inProgress.length === 1 ? '' : 's'} in progress
-            </div>
-            <div className="muted small">
-              {todayOrders.length} placed today · {money(todayOrders.reduce((s, o) => s + o.total, 0))}
-            </div>
+            <div className="strong">{inProgress.length} orders in progress</div>
+            <div className="muted small">{cur.length} paid orders in this period · {moneyShort(sales)}</div>
           </div>
         </div>
-        <span className="btn sm primary">Open orders →</span>
+        <span className="strong">Open orders →</span>
       </Link>
 
       <div className="row between wrap" style={{ marginBottom: 14 }}>
-        <span className="muted small">Compared with the previous {range === 'today' ? 'day' : `${rangeDays(range)} days`}</span>
+        <span className="muted small">Compared with the previous period · {pctChange(sales, prevSales)} sales</span>
         <Seg value={range} onChange={setRange} options={[{ value: 'today', label: 'Today' }, { value: '7d', label: '7 days' }, { value: '30d', label: '30 days' }, { value: '90d', label: '90 days' }]} />
       </div>
 
-      <div className="grid g4" style={{ marginBottom: 24 }}>
-        <Stat value={newCust} label="New customers" delta={`${newCust - prevNew >= 0 ? '+' : ''}${newCust - prevNew}`} good={newCust >= prevNew} />
-        <Stat value={returning} label="Returning customers" delta={`${returning - prevReturning >= 0 ? '+' : ''}${returning - prevReturning}`} good={returning >= prevReturning} />
-        <Stat value={moneyShort(sales)} label="Sales" delta={pctChange(sales, prevSales)} good={sales >= prevSales} />
-        <Stat value={cur.length} label="Orders" delta={`${cur.length - prev.length >= 0 ? '+' : ''}${cur.length - prev.length}`} good={cur.length >= prev.length} />
+      <div className="grid g4" style={{ marginBottom: 16 }}>
+        {statCard('♙', 'rgba(232,140,120,.18)', 'Paid sales', moneyShort(sales), `${cur.length} paid orders`)}
+        {statCard('₱', 'var(--green-soft)', 'Orders', all.length, `${awaiting} awaiting payment`)}
+        {statCard('◷', 'var(--orange-soft)', 'Average paid order', moneyShort(cur.length ? sales / cur.length : 0), 'For the selected period')}
+        {statCard('◇', 'var(--accent-soft)', 'Low stock items', lowStock.length, 'Check inventory')}
       </div>
 
       <div className="grid g2" style={{ marginBottom: 16 }}>
-        <Card title="Sales">{cur.length ? <DailyChart orders={cur} days={rangeDays(range)} /> : <Empty icon="◔" title="No sales in this period yet." />}</Card>
-        <Card title="To do" actions={<span className="badge">{textable} can be texted</span>}>
-          {todos.length === 0 ? (
-            <Empty icon="✓" title="You're all caught up" />
-          ) : (
+        <Card title="To do" actions={<span className="small muted">Quick actions</span>}>
+          <div className="stack">
+            {todos.map((t) => (
+              <Link key={t.t} to={t.to} className="row" style={{ color: 'inherit', textDecoration: 'none', paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
+                <span style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--fill)', display: 'grid', placeItems: 'center' }}>{t.i}</span>
+                <div className="grow">
+                  <div className="strong">{t.t}</div>
+                  <div className="small muted">{t.d}</div>
+                </div>
+                <span className="muted">›</span>
+              </Link>
+            ))}
+          </div>
+        </Card>
+        <Card title="Best sellers" actions={<Link to="/admin/reports" className="small strong">View report →</Link>}>
+          {best.length === 0 ? <p className="muted">No paid sales in this period yet.</p> : (
             <div className="stack">
-              {todos.map((t) => (
-                <Link key={t.t} to={t.to} className="row" style={{ color: 'inherit', textDecoration: 'none', padding: 10, borderRadius: 12, background: 'var(--fill)' }}>
-                  <div className="grow">
-                    <div className="strong">{t.t}</div>
-                    <div className="small muted">{t.d}</div>
-                  </div>
-                  <span className="muted">›</span>
-                </Link>
+              {best.map((b, i) => (
+                <div key={b.name} className="row">
+                  <span className="badge" style={{ width: 24, justifyContent: 'center' }}>{i + 1}</span>
+                  <span className="grow">{b.name}</span>
+                  <span className="strong">{b.qty} sold</span>
+                </div>
               ))}
             </div>
           )}
         </Card>
       </div>
 
-      <div className="grid g3">
-        <Card title="Who's buying">
-          <div className="v" style={{ fontSize: 24, fontWeight: 600, marginBottom: 12 }}>{money(sales)}</div>
-          {sales === 0 ? (
-            <p className="muted">No sales in this period yet.</p>
-          ) : (
+      <div className="grid g2" style={{ marginBottom: 16 }}>
+        <Card title="Recent orders" actions={<Link to="/admin/orders" className="small strong">Open orders →</Link>}>
+          {db.orders.length === 0 ? <p className="muted">No orders yet. Place one from the shop to see it here.</p> : (
             <div className="stack">
-              {byType.map((t) => (
-                <div key={t.name}>
-                  <div className="row between small">
-                    <span>{t.name}</span>
-                    <span className="mono">{moneyShort(t.v)}</span>
-                  </div>
-                  <div className="bar">
-                    <i style={{ width: `${(t.v / sales) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-              {newCust + returning > 0 && <div className="small muted">{newCust} new · {returning} returning</div>}
-            </div>
-          )}
-        </Card>
-        <Card title="Best sellers">
-          {best.length === 0 ? (
-            <p className="muted">No dishes sold in this period yet.</p>
-          ) : (
-            <div className="stack">
-              {best.map((b, i) => (
-                <div key={b.name} className="row">
-                  <span className="faint mono" style={{ width: 16 }}>{i + 1}</span>
-                  <span className="grow">{b.name}</span>
-                  <span className="badge">{b.qty} sold</span>
+              {db.orders.slice(0, 6).map((o) => (
+                <div key={o.id} className="row">
+                  <span className="mono small" style={{ width: 48 }}>#{o.code}</span>
+                  <span className="grow" style={{ background: 'var(--fill)', borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>{o.status === 'pending' ? 'new' : o.status}</span>
+                  <span className="strong mono">{moneyShort(o.total)}</span>
                 </div>
               ))}
             </div>
           )}
         </Card>
-        <Card title="Busiest hours">
-          {cur.length === 0 ? (
-            <Empty icon="◷" title="No completed orders in this period yet">
-              Your rush hours show up here once orders are paid or delivered.
-            </Empty>
-          ) : (
-            <Hours orders={cur} />
+        <Card title="Sales by day" actions={<Link to="/admin/reports" className="small strong">View report →</Link>}>
+          {byDay.length === 0 ? <p className="muted">No paid sales in this period yet.</p> : (
+            <div className="stack">
+              {byDay.map((x) => (
+                <div key={x.d} className="row">
+                  <span className="small" style={{ width: 84 }}>{x.d}</span>
+                  <div className="bar grow" style={{ height: 8 }}><i style={{ width: `${(x.v / maxDay) * 100}%`, background: '#7f9f78' }} /></div>
+                  <span className="strong mono small">{moneyShort(x.v)}</span>
+                </div>
+              ))}
+            </div>
           )}
         </Card>
       </div>
-      <p className="small faint" style={{ marginTop: 20 }}>Updated live · changes from the kiosk appear instantly</p>
+
+      <div className="grid g2">
+        <Card title="Busiest hours">{cur.length ? <Hours orders={cur} /> : <Empty icon="◷" title="No paid orders in this period yet">Your rush hours show up here once orders are paid.</Empty>}</Card>
+        <Card title="Customers">
+          <div className="grid g2">
+            <Stat value={newCust} label="New customers" />
+            <Stat value={db.customers.length} label="All customers" />
+          </div>
+        </Card>
+      </div>
     </>
   );
 }

@@ -76,6 +76,13 @@ export interface Order {
   tableNo: string;
   govDiscount?: { type: 'senior' | 'pwd'; idNumber: string; name: string };
   stampsEarned: number;
+  /** 4-digit public order code customers use to track */
+  code: string;
+  paymentStatus: 'due' | 'cash' | 'digital';
+  proofImage: string;
+  loyaltyCardCode: string;
+  pointsAwarded?: boolean;
+  notified?: boolean;
 }
 
 export interface Customer {
@@ -107,6 +114,49 @@ export interface Expense {
   description: string;
   amount: number;
   branchId: ID;
+  paidWith: 'cash' | 'digital';
+  at: number;
+}
+
+export interface CashSession {
+  id: ID;
+  openedAt: number;
+  openedBy: string;
+  float: number;
+  note: string;
+  closedAt?: number;
+  closedBy?: string;
+  counted?: number;
+  expected?: number;
+  closeNote?: string;
+  movements: { id: ID; at: number; type: 'in' | 'out' | 'remit'; amount: number; note: string; by: string }[];
+}
+
+export interface Shift {
+  id: ID;
+  staffId: ID;
+  clockIn: number;
+  clockOut?: number;
+}
+
+export interface PlannedShift {
+  id: ID;
+  staffId: ID;
+  date: string;
+  start: string;
+  end: string;
+  note: string;
+}
+
+export interface LoyaltyCard {
+  id: ID;
+  code: string;
+  label: string;
+  points: number;
+  issuedAt: number;
+  redeemed: number;
+  active: boolean;
+  history: { at: number; delta: number; note: string }[];
 }
 
 export interface CashEntry {
@@ -138,7 +188,7 @@ export interface StockLog {
   delta: number;
   after: number;
   orderId?: ID;
-  orderNumber?: number;
+  orderNumber?: number | string;
   by: string;
   note: string;
 }
@@ -171,12 +221,20 @@ export interface Branch {
   active: boolean;
 }
 
-export type StaffRole = 'owner' | 'manager' | 'cashier' | 'kitchen';
+export type StaffRole = 'owner' | 'admin' | 'staff';
+
+export type Perm =
+  | 'orders' | 'payment' | 'cash_view_all' | 'expenses_view' | 'products' | 'branding' | 'attendance_own' | 'schedule_own'
+  | 'stock' | 'loyalty_config' | 'kitchen' | 'cash_remits' | 'expenses_record' | 'profit' | 'categories' | 'sales'
+  | 'attendance_team' | 'schedule_team' | 'loyalty';
 
 export interface Staff {
   id: ID;
   name: string;
+  username: string;
+  password: string;
   role: StaffRole;
+  perms: Perm[];
   pin: string;
   branchId: ID;
   active: boolean;
@@ -188,6 +246,9 @@ export interface PaymentMethod {
   instructions: string;
   payAtCounter: boolean;
   active: boolean;
+  qr: string;
+  allowProof: boolean;
+  kind: 'cash' | 'digital';
 }
 
 export interface TextMessage {
@@ -202,7 +263,7 @@ export interface GovDiscountLog {
   id: ID;
   at: number;
   orderId: ID;
-  orderNumber: number;
+  orderNumber: number | string;
   type: 'senior' | 'pwd';
   name: string;
   idNumber: string;
@@ -250,6 +311,34 @@ export interface Branding {
     image: string;
     idleSeconds: number;
   };
+  look: 'garden' | 'sunday' | 'afterdark' | 'custom';
+  fontPair: FontPair;
+  logoPosition: 'left' | 'center';
+  shopLayout: ShopLayout;
+  productCard: ProductCard;
+  adminLogo: string;
+  heroEyebrow: string;
+  heroBadge: string;
+  heroButtons: ShopButton[];
+  storyButtons: ShopButton[];
+  sectionOrder: ShopSection[];
+  introStrip: string[];
+  menuEyebrow: string;
+  menuTitle: string;
+  menuSubtitle: string;
+  story: { eyebrow: string; title: string; titleItalic: string; text: string; bubble: string };
+  footerText: string;
+}
+
+export type FontPair = 'warm' | 'modern' | 'editorial' | 'rounded' | 'humanist' | 'geometric' | 'softdisplay' | 'compact';
+export type ShopLayout = 'default' | 'sidebar' | 'magazine' | 'gridfocus' | 'list' | 'mosaic' | 'storefront' | 'kiosk';
+export type ProductCard = 'classic' | 'soft' | 'minimal' | 'framed' | 'editorial' | 'accent' | 'floating' | 'compact' | 'rounded' | 'imagefirst';
+export type ShopSection = 'intro' | 'menu' | 'story';
+export interface ShopButton {
+  id: ID;
+  label: string;
+  action: 'menu' | 'bag' | 'track' | 'story' | 'kiosk';
+  style: 'primary' | 'secondary' | 'link';
 }
 
 export interface ReceiptSettings {
@@ -266,6 +355,11 @@ export interface LoyaltySettings {
   stampsForReward: number;
   spendPerStamp: number;
   rewardText: string;
+  earnBy: 'drinks' | 'spend';
+  pointsPer: number;
+  eligibleItemIds: ID[];
+  largeIncluded: boolean;
+  toppingsIncluded: boolean;
 }
 
 export interface Settings {
@@ -277,6 +371,8 @@ export interface Settings {
   autoAcceptOrders: boolean;
   activeBranchId: ID;
   kioskBranchId: ID;
+  singlePaymentId: ID;
+  timezone: string;
 }
 
 export interface DB {
@@ -303,4 +399,8 @@ export interface DB {
   receipt: ReceiptSettings;
   loyalty: LoyaltySettings;
   settings: Settings;
+  cashSessions: CashSession[];
+  shifts: Shift[];
+  planned: PlannedShift[];
+  loyaltyCards: LoyaltyCard[];
 }

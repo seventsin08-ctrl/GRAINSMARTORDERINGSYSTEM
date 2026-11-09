@@ -3,7 +3,7 @@ import { uid, update, useDB } from '../../store/db';
 import type { AddonGroup, Category, MenuItem, UpsellRule } from '../../store/types';
 import { Card, Empty, Field, ImagePicker, Modal, PageHead, Toggle, ToggleRow, confirmAction, toast } from '../../components/ui';
 import { money } from '../../lib/format';
-import { art } from '../../store/seed';
+import { art, seed } from '../../store/seed';
 
 /* ----------------------------- Menu management ----------------------------- */
 
@@ -33,7 +33,10 @@ export function MenuManagement() {
 
   return (
     <>
-      <PageHead title="Menu" sub="Everything customers can order from the kiosk." actions={<button className="btn primary" onClick={() => setEdit(blank())}>+ Add item</button>} />
+      <PageHead title="Menu products" sub="Prices in Philippine pesos. Availability updates the customer menu." actions={<>
+        <button className="btn primary" onClick={() => setEdit(blank())}>+ Add product</button>
+        <button className="btn solid-red lg" onClick={() => confirmAction('Reset all products to the default GrainSmart menu? Your current products will be replaced.') && update((d) => { const s = seed(); d.items = s.items; d.categories = s.categories; d.addonGroups = s.addonGroups; })}>Reset all products</button>
+      </>} />
       <div className="row wrap" style={{ marginBottom: 16 }}>
         <input className="input" style={{ width: 260 }} placeholder="Search items" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="input" style={{ width: 200 }} value={cat} onChange={(e) => setCat(e.target.value)}>
@@ -41,39 +44,28 @@ export function MenuManagement() {
           {db.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
-      <Card pad={false}>
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Item</th><th>Category</th><th className="right">Price</th><th className="right">Cost</th><th className="right">Margin</th><th>Stock</th><th>Available</th><th /></tr></thead>
-            <tbody>
-              {list.map((i) => {
-                const stock = i.stock[branch] ?? 0;
-                return (
-                  <tr key={i.id}>
-                    <td>
-                      <div className="row">
-                        <img className="thumb" src={i.image} alt="" />
-                        <div>
-                          <div className="strong">{i.name} {i.featured && <span className="badge orange">★</span>}</div>
-                          <div className="small muted" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.description}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>{db.categories.find((c) => c.id === i.categoryId)?.name ?? '—'}</td>
-                    <td className="right mono">{money(i.price)}</td>
-                    <td className="right mono muted">{money(i.cost)}</td>
-                    <td className="right mono">{i.price ? Math.round(((i.price - i.cost) / i.price) * 100) : 0}%</td>
-                    <td>{i.trackStock ? <span className={`badge ${stock <= 0 ? 'red' : stock <= i.lowStockAt ? 'orange' : 'green'}`}>{stock}</span> : <span className="faint small">Not tracked</span>}</td>
-                    <td><Toggle on={i.available} onChange={(v) => update((d) => { d.items.find((x) => x.id === i.id)!.available = v; })} label="Available" /></td>
-                    <td className="right"><button className="btn sm" onClick={() => setEdit(structuredClone(i))}>Edit</button></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {list.length === 0 && <Empty title="No items yet" icon="◫">Add your first item to show it on the kiosk.</Empty>}
-      </Card>
+      <div className="grid g2">
+        {list.map((i) => {
+          const stock = i.stock[branch] ?? 0;
+          return (
+            <div key={i.id} className="card row" style={{ padding: 8, paddingRight: 14 }}>
+              <img className="thumb" src={i.image} alt="" style={{ width: 52, height: 52 }} />
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="h-serif" style={{ fontSize: 17 }}>{i.name} {i.featured && <span className="badge orange">★</span>}</div>
+                <div className="small muted">
+                  {i.available ? 'Available' : 'Hidden'} · {money(i.price)}
+                  {!i.cost && <span style={{ color: 'var(--orange)' }}> · no cost set</span>}
+                  {i.trackStock && <> · {stock} in stock</>}
+                  {' · '}{db.categories.find((c) => c.id === i.categoryId)?.name}
+                </div>
+              </div>
+              <Toggle on={i.available} onChange={(v) => update((d) => { d.items.find((x) => x.id === i.id)!.available = v; })} label="Available" />
+              <button className="btn sm outline" onClick={() => setEdit(structuredClone(i))}>Edit</button>
+            </div>
+          );
+        })}
+      </div>
+      {list.length === 0 && <Card><Empty title="No items yet" icon="◫">Add your first item to show it on the shop.</Empty></Card>}
       {edit && <ItemEditor item={edit} onClose={() => setEdit(null)} />}
     </>
   );
@@ -162,7 +154,7 @@ export function Categories() {
     });
   return (
     <>
-      <PageHead title="Categories" sub="Group your menu. The order here is the order on the kiosk." />
+      <PageHead title="Menu categories" sub="Keep the shop menu tidy as you grow. The order here is the order customers see." />
       <Card>
         <form className="row" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); if (!name.trim()) return; update((d) => { d.categories.push({ id: uid('cat'), name: name.trim(), sort: d.categories.length + 1, active: true }); }); setName(''); }}>
           <input className="input" placeholder="New category name" value={name} onChange={(e) => setName(e.target.value)} />
