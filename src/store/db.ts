@@ -1,6 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react';
 import { seed, DEFAULT_BRANDING } from './seed';
 import type { CartLine, DB, Order, OrderStatus, Staff, StockLog } from './types';
+import { queuePush, startSync } from './sync';
 
 const KEY = 'grainsmart.db.v2';
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('grainsmart') : null;
@@ -43,6 +44,24 @@ function persist() {
     /* storage full or blocked: keep working in memory */
   }
   channel?.postMessage('changed');
+  queuePush(state);
+}
+
+/** Replace local state with data that arrived from another device (no echo back). */
+function applyRemote(next: DB) {
+  state = next;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    /* ignore */
+  }
+  channel?.postMessage('changed');
+  emit();
+}
+
+/** (Re)connect live sync, e.g. after the database settings change. */
+export function connectSync() {
+  void startSync({ getState: () => state, applyRemote });
 }
 
 function emit() {
@@ -59,6 +78,8 @@ window.addEventListener('storage', (e) => {
     emit();
   }
 });
+
+connectSync();
 
 export function getDB(): DB {
   return state;
@@ -462,6 +483,7 @@ export function login(username: string, password: string, keep: boolean): Staff 
   } catch {
     /* ignore */
   }
+  state = { ...state }; // new snapshot so screens re-render with the signed-in user
   emit();
   return u;
 }
@@ -475,6 +497,7 @@ export function logout(clear = false) {
   } catch {
     /* ignore */
   }
+  state = { ...state };
   emit();
 }
 

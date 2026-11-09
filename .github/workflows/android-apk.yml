@@ -1,0 +1,73 @@
+name: Build Android app (APK)
+
+on:
+  push:
+    branches: [main, master, 'claude/**']
+    paths-ignore:
+      - 'grainsmart website images/**'
+      - '**/*.zip'
+      - '**/*.tar'
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      # Optional: add these as repository secrets to build the app pre-connected to your database.
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_STORE_ID: ${{ secrets.VITE_STORE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Copy web app into Android project
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon -PversionCode=${{ github.run_number }}
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk GrainSmart.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GrainSmart-apk
+          path: GrainSmart.apk
+
+      - name: Replace the "latest app" download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete app-latest --cleanup-tag --yes || true
+          gh release create app-latest GrainSmart.apk \
+            --target "${{ github.sha }}" \
+            --prerelease \
+            --title "GrainSmart app (latest build)" \
+            --notes "Android app built from ${{ github.ref_name }} at ${{ github.sha }}. Download GrainSmart.apk on your phone, open it, and allow installing from this source if Android asks."

@@ -70,6 +70,7 @@ export const NAV: Section[] = [
   {
     title: 'Settings',
     items: [
+      { to: '/admin/sync', label: 'Connect devices', icon: '⇆', perm: 'branding' },
       { to: '/admin/appearance', label: 'Appearance', icon: '◐' },
       { to: '/admin/settings', label: 'Store settings', icon: '⚙', perm: 'branding' },
       { to: '/admin/learn', label: 'Learn', icon: '?' },

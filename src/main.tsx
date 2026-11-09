@@ -18,13 +18,25 @@ import { LoyaltyCards, StockOnHand } from './admin/pages/Loyalty';
 import { Branches, ConnectAI, Learn, OrderTypes, PaymentMethods, QRCodes, ReceiptStudio, SettingsPage } from './admin/pages/Setup';
 import { Appearance, Attendance, Schedule, StaffPage } from './admin/pages/People';
 import BrandingPage from './admin/pages/Branding';
+import SyncPage from './admin/pages/SyncPage';
 import { ToastHost } from './components/ui';
+import MobileApp from './app/MobileApp';
+import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
+
+// The installed Android/iOS app opens straight into the phone app.
+if (Capacitor.isNativePlatform()) {
+  if (!location.hash || location.hash === '#/' || location.hash === '#') location.hash = '#/app';
+  StatusBar.setStyle({ style: Style.Default }).catch(() => {});
+  StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <HashRouter>
       <Routes>
         <Route path="/" element={<Shop />} />
+        <Route path="/app" element={<MobileApp />} />
         <Route path="/kiosk" element={<Kiosk />} />
         <Route path="/order/:id" element={<OrderStatusPage />} />
         <Route path="/loyalty" element={<LoyaltyPage />} />
@@ -40,6 +52,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="attendance" element={<Attendance />} />
           <Route path="schedule" element={<Schedule />} />
           <Route path="appearance" element={<Appearance />} />
+          <Route path="sync" element={<SyncPage />} />
           <Route path="menu" element={<MenuManagement />} />
           <Route path="categories" element={<Categories />} />
           <Route path="addons" element={<Addons />} />

@@ -29,3 +29,20 @@ Built from the GrainSmart screenshots in `grainsmart website images/`.
 ## Data
 
 Data is stored in the browser (`localStorage`) and syncs live between tabs on the same device. A shared cloud database is needed for several devices (tablet kiosk + owner's phone) to see the same orders.
+
+## Phone app (Android APK)
+
+The same system as an iOS-style phone app: tabs for Today, Orders, Kitchen, Shop and More (every admin page), slide-in pages, swipe-back, action sheets, and a drop-down banner with sound and vibration for every new order.
+
+- **Download:** the GitHub workflow `.github/workflows/android-apk.yml` builds the APK on every push and attaches it to the **GrainSmart app (latest build)** release (`app-latest`) as `GrainSmart.apk`.
+- **Try it in a browser:** open `#/app`.
+- The Android project lives in `android/` (Capacitor). `npm run build && npx cap sync android` copies the web app into it.
+
+## Connecting devices (live sync)
+
+The website, kiosk and phone app share one data engine (`src/store/sync.ts`). To make orders appear on every device:
+
+1. Create a free Supabase project and run the setup SQL shown in **Admin → Connect devices**.
+2. Paste the Project URL and anon public key on that page on each device, or add them as repository secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (and optionally `VITE_STORE_ID`) so builds come pre-connected.
+
+Without this, each device keeps its own data.
