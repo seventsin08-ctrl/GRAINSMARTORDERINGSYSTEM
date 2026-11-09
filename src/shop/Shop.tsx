@@ -117,7 +117,7 @@ export default function Shop({ branding, preview }: { branding?: Branding; previ
                 <span className="lg">{b.logo ? <img src={b.logo} alt="" /> : '🍃'}</span>
                 <b>{b.storeName}</b>
               </div>
-              <span>{b.footerText} · <a href="#/loyalty">Loyalty card</a> · <a href="#/kiosk">Kiosk mode</a></span>
+              <span>{b.footerText} · <a href="#/loyalty">Loyalty card</a> · <a href="#/kiosk">Kiosk mode</a> · <a href="#/admin">Admin login</a></span>
             </div>
           </footer>
         </>
